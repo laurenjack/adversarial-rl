@@ -36,7 +36,7 @@ Mappings:
     us-east-1:  {AMI: ami-0f5ee92e2d63afc18}
     us-east-2:  {AMI: ami-008b6a210f661cd08}
     us-west-2:  {AMI: ami-011ee32b3ca60ba85}
-    eu-central-1:{AMI: ami-053dfa9af5c5893b8}
+    eu-central-1: {AMI: ami-053dfa9af5c5893b8}
     eu-west-1:  {AMI: ami-0bb3facb3c7e1b45e}
 
 #####################
