@@ -22,6 +22,12 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region:            eu-central-1
 
+    - name: Package source and upload to S3
+      run: |
+        ZIPFILE=code-${{ github.sha }}.zip
+        git archive --format=zip -o $ZIPFILE HEAD
+        aws s3 cp $ZIPFILE s3://${{ secrets.CODE_BUCKET }}/$ZIPFILE
+
     - name: Deploy or update CloudFormation stack
       run: |
         aws cloudformation deploy \
@@ -29,6 +35,8 @@ jobs:
           --stack-name gpu-lora \
           --capabilities CAPABILITY_NAMED_IAM \
           --parameter-overrides \
+              CodeBucketName=${{ secrets.CODE_BUCKET }} \
+              CodeKey=code-${{ github.sha }}.zip \
               KeyPairName=${{ secrets.EC2_KEYPAIR_NAME }} \
               SpotMaxPrice=1.10 \
               InstanceType=g5.2xlarge
