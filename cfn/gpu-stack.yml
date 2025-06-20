@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Single Spot GPU instance for LoRA/QLoRA experiments.
+  Defaults: g5.2xlarge, Ubuntu 22.04 GPU AMI, 100 GB NVMe root EBS.
+
+#####################
+#  Parameters
+#####################
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 key pair for SSH
+  InstanceType:
+    Type: String
+    Default: g5.2xlarge           # change to g5.xlarge for 7 B workload
+    AllowedValues:
+      - g5.xlarge
+      - g5.2xlarge
+  RootVolumeSize:
+    Type: Number
+    Default: 100                  # GB
+  SpotMaxPrice:
+    Type: String
+    Default: '1.10'               # USD/h ceiling for g5.2xlarge
+  SSHLocation:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR permitted to reach port 22
+
+#####################
+#  Mappings (AMI)
+#####################
+Mappings:
+  RegionMap:
+    # Canonical Ubuntu 22.04 "gpu" community AMI IDs (May - Jun 2025 refresh)
+    us-east-1:  {AMI: ami-0f5ee92e2d63afc18}
+    us-east-2:  {AMI: ami-008b6a210f661cd08}
+    us-west-2:  {AMI: ami-011ee32b3ca60ba85}
+    eu-central-1:{AMI: ami-053dfa9af5c5893b8}
+    eu-west-1:  {AMI: ami-0bb3facb3c7e1b45e}
+
+#####################
+#  Resources
+#####################
+Resources:
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore   # SSM Session Mgr
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy     # logs/metrics
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: allow SSH in
+      VpcId: !Ref AWS::NoValue      # default VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+
+  GPUSpotInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds: [!Ref SecurityGroup]
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: !Ref RootVolumeSize
+            VolumeType: gp3
+      InstanceMarketOptions:
+        MarketType: spot
+        SpotOptions:
+          MaxPrice: !Ref SpotMaxPrice
+          SpotInstanceType: one-time
+          InstanceInterruptionBehavior: stop
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          exec > >(tee /var/log/user-data.log|logger -t userdata -s) 2>&1
+          #
+          # 2.2 software stack  ----------------------------------------
+          apt-get update && apt-get install -y git build-essential curl
+          # Clone the repository to get requirements.txt and project code
+          cd /home/ubuntu
+          git clone https://github.com/YOUR_USERNAME/adversarial-rl.git
+          chown -R ubuntu:ubuntu adversarial-rl
+          # Miniconda
+          curl -sL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+          bash /tmp/miniconda.sh -b -p /opt/miniconda
+          eval "$(/opt/miniconda/bin/conda shell.bash hook)"
+          conda create -n codellama python=3.10 -y
+          conda activate codellama
+          # Install Python dependencies from local requirements.txt
+          pip install -r /home/ubuntu/adversarial-rl/requirements.txt
+          #
+          # Let CloudWatch Agent pull basic metrics (already allowed by policy)
+          /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c default -s
+          #
+          echo "Setup complete"
+
+#####################
+#  Outputs
+#####################
+Outputs:
+  PublicIP:
+    Description: The instance's public IPv4
+    Value: !GetAtt GPUSpotInstance.PublicIp
+  InstanceId:
+    Value: !Ref GPUSpotInstance

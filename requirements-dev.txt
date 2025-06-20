@@ -1,0 +1,5 @@
+# Include base requirements
+-r requirements-base.txt
+
+# CPU-only PyTorch for local development
+torch==2.2.2 
