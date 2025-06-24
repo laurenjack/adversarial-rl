@@ -46,6 +46,15 @@ Resources:
             VolumeSize: 100       # GiB
             DeleteOnTermination: true
             Encrypted: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y python3.10-venv
+          # create 'python' symlink pointing to python3 if it doesn't already exist
+          if ! command -v python >/dev/null 2>&1; then
+            ln -s $(command -v python3) /usr/local/bin/python
+          fi
       Tags:
         - Key: Name
           Value: DLAMI-g5-2xlarge
