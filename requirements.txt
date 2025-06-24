@@ -1,6 +1,9 @@
 # Include base requirements
 -r requirements-base.txt
 
+# Additional index for CUDA 11.8 wheels (torch, torchvision, etc.)
+--extra-index-url https://download.pytorch.org/whl/cu118
+
 # PyTorch with CUDA 11.8 support for GPU instances
-torch==2.2.2+cu118 -f https://download.pytorch.org/whl/cu118
+torch==2.2.2+cu118
 bitsandbytes==0.43.1 
