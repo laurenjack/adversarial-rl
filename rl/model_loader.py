@@ -6,14 +6,12 @@ Requirements:
 """
 from pathlib import Path
 from typing import Dict
-import argparse
 import torch
 from safetensors.torch import load_file
 from huggingface_hub import snapshot_download           # HF ≥ 0.18.0
-from rl.model import LlamaCode2, H, NUM_LAYERS  # local implementation
+from rl.model import LlamaCode2, H, NUM_LAYERS, MODEL_ID
 
 # ---------------------------------------------------------------------
-MODEL_ID: str = "meta-llama/CodeLlama-7b-Instruct-hf"  # changed from CodeLlama-7b-hf
 LOCAL_DIR: Path = Path("CodeLlama-7b")         
 # only pull the weight shards + their index and the config
 ALLOW_PATTERNS = [
@@ -170,23 +168,3 @@ def load_llamacode2(device: str = "cuda", skip_download: bool = False) -> LlamaC
 
     print("✓ model loaded successfully")
     return model
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--skip-download", action="store_true",
-                        help="Assume weights are already present locally.")
-    parser.add_argument("--device", default="cuda", help="Target device for the model & weights (e.g. 'cuda', 'cpu').")
-    args = parser.parse_args()
-
-    # End-to-end demonstration
-    _ = load_llamacode2(device=args.device, skip_download=args.skip_download)
-
-    # Keeping the original state-dict shape sanity check as an optional step
-    # (this downloads >30GiB if first time, hence behind the flag)
-    # hf_state = load_state_dict_to_device(LOCAL_DIR, device=args.device)
-    # sanity_check(hf_state)
-
-
-if __name__ == "__main__":
-    main()

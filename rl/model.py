@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 
+MODEL_ID = "meta-llama/CodeLlama-7b-Instruct-hf"
 VOCAB_SIZE = 32000
 NUM_LAYERS = 32
 MAX_CONTEXT_LENGTH = 4096
@@ -44,6 +45,9 @@ class SelfAttention(nn.Module):
         # Hacky was to do caching of KV but keeps things simple, this is set explicitly in the outer rollout loop
         self.cache = None
 
+    def set_kv_cache(self, b: int):
+        self.cache = KvCache(b)
+
     def _rotate(self, x, start):
         # Apply the ROPE matrix multiplication as an elementwise product
         s = x.shape[2]
@@ -55,7 +59,7 @@ class SelfAttention(nn.Module):
         out_odd = sin * even + cos * odd
         return torch.stack((out_even, out_odd), dim=-1).flatten(-2)
 
-    def forward(self, x, start=0):
+    def forward(self, x, attention_mask=None, start=0):
         b, s, _ = x.shape
         # Compute matrix multiplications for attention and reshape so that each head has its own index in the 2nd dim
         Q, K, V = [w(x).view(b, s, ATTENTION_HEADS, HEAD_SIZE) for w in [self.q_proj, self.k_proj, self.v_proj]]
@@ -76,12 +80,17 @@ class SelfAttention(nn.Module):
             V = self.cache.v[:, :, :start+s, :]
 
         z = Q @ K.transpose(2, 3) / HEAD_SIZE ** 0.5  # [b, ATTENTION_HEADS, s, start + s]
-        mask = self.full_mask[:s, :start + s]
-        # neg_inf = torch.finfo(z.dtype).min
+        mask = self.full_mask[:s, :start + s] .unsqueeze(0).unsqueeze(0)  # [1, 1, s, start + s]
+        if attention_mask is not None:
+            attn = attention_mask[:, :start + s].to(torch.bool)
+            attn = attn.unsqueeze(1).unsqueeze(2)
+            mask = mask & attn  # (b, 1, s, start + s)
         z = z.masked_fill(~mask, -1e6)
         A = torch.softmax(z, dim=-1)
         context = A @ V   # [b, ATTENTION_HEADS, s, HEAD_SIZE]
-
+        if attention_mask is not None:
+            q_mask = attention_mask[:, :s].unsqueeze(1).unsqueeze(-1)  # (b,1,s,1)
+            context = context * q_mask
         # Switch the shape back to a stack of heads i.e. [b, s, H]
         context = context.transpose(1, 2).reshape(b, s, H)
         return self.out_proj(context)
@@ -112,12 +121,15 @@ class LlamaBlock(nn.Module):
         self.post_attention_layernorm = RmsNorm()
         self.mlp = MLP()
 
-    def forward(self, x, start=0):
+    def forward(self, x, attention_mask=None, start=0):
         #  x: [b, s, H]
         normed = self.input_layernorm(x)
-        x = x + self.attention(normed, start=start)
+        x = x + self.attention(normed, attention_mask=attention_mask, start=start)
         normed = self.post_attention_layernorm(x)
         return x + self.mlp(normed)
+    
+    def set_kv_cache(self, b: int):
+        self.attention.set_kv_cache(b)
 
        
 class LlamaCode2(nn.Module):
@@ -139,10 +151,17 @@ class LlamaCode2(nn.Module):
         self.lm_head = nn.Linear(H, VOCAB_SIZE, bias=False)
         self.lm_head.weight = self.embed_tokens.weight
 
-    def forward(self, token_indices, start=0):
-        x = self.embed_tokens(token_indices)  # token_indices has shape [b, s],  x has shape [b, s, H]
+    def set_kv_cache(self, b: int):
         for block in self.blocks:
-            x = block(x, start=start)
+            block.set_kv_cache(b)
+
+    def forward(self, token_indices, attention_mask=None, start=0):
+        if attention_mask is None:
+            attention_mask = torch.ones_like(token_indices, dtype=torch.bool)
+
+        x = self.embed_tokens(token_indices)  # [b, s, H]
+        for block in self.blocks:
+            x = block(x, attention_mask=attention_mask, start=start)
         x = self.norm(x)
         return self.lm_head(x)
 

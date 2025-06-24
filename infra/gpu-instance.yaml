@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Single g5.2xlarge Ubuntu 22.04 DLAMI with 100 GiB root volume
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 key pair for SSH
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to launch the instance in
+  AllowedSSH:
+    Type: String
+    Description: CIDR allowed to SSH (e.g. 203.0.113.5/32)
+    Default: 0.0.0.0/0
+  # SSM public parameter that always resolves to the latest
+  # "Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04)" in this region
+  AmiId:
+    Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+    Default: /aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-22.04/latest/ami-id
+
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSSH
+
+  GPUInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: g5.2xlarge
+      ImageId: !Ref AmiId
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !GetAtt InstanceSecurityGroup.GroupId
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1   # Ubuntu root
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 100       # GiB
+            DeleteOnTermination: true
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: DLAMI-g5-2xlarge
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref GPUInstance
+  PublicIP:
+    Description: Public IPv4 address (if subnet is public)
+    Value: !GetAtt GPUInstance.PublicIp
