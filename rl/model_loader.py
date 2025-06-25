@@ -48,7 +48,9 @@ def load_state_dict_to_device(model_dir: Path, device: str = "cuda") -> Dict[str
             return torch.load(shard, map_location=device)
 
     state: Dict[str, torch.Tensor] = {}
-    shards = sorted(model_dir.glob("pytorch_model*"))
+    #  The glob also returns the index JSON file (e.g. pytorch_model.bin.index.json) which is not a tensor
+    #  and will raise an error when passed to torch.load. Filter to keep only valid weight files.
+    shards = [p for p in sorted(model_dir.glob("pytorch_model*")) if p.suffix in (".bin", ".safetensors")]
     if not shards:
         raise FileNotFoundError("No shards found – did the download fail?")
     
@@ -153,13 +155,30 @@ def load_llamacode2(device: str = "cuda", skip_download: bool = False) -> LlamaC
     """
 
     model_dir = LOCAL_DIR if skip_download else download_if_missing()
-    hf_state = load_state_dict_to_device(model_dir, device=device)
+
+    # Step 1: load HF shards on *CPU* irrespective of the target device to avoid
+    # holding two full copies of the weights on the GPU. This requires enough RAM
+    # but prevents CUDA OOM when the model parameters are later materialised.
+    hf_state = load_state_dict_to_device(model_dir, device="cpu")
+
+    # Decide on the dtype for the final model – stay in bf16 on CPU, else use fp16
+    target_dtype = torch.float16 if device.startswith("cuda") else torch.bfloat16
 
     print("→ remapping + casting weights …")
-    state_dict = _convert_and_remap_state_dict(hf_state, dtype=torch.bfloat16)
+    state_dict = _convert_and_remap_state_dict(hf_state, dtype=target_dtype)
 
-    model = LlamaCode2().to(device)
+    # We no longer need the original HF state on CPU; clear it to free memory
+    del hf_state
+
+    # Step 2: instantiate the model on CPU, load weights, then move to the target device.
+    model = LlamaCode2().to(dtype=target_dtype)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
+
+    # Free the remapped state dict ASAP to release RAM
+    del state_dict
+
+    # Finally move the fully initialised model to the requested device.
+    model = model.to(device)
 
     if missing:
         print(f"⚠️  {len(missing)} local parameters were *not* initialised from checkpoint → e.g. {missing[:3]}")

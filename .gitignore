@@ -26,3 +26,6 @@ Thumbs.db
 # Environment variables
 .env
 .env.local 
+
+# Model cache
+CodeLlama-7b/
