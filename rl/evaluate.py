@@ -20,7 +20,7 @@ def evaluate(model: torch.nn.Module, dataloader: DataLoader, tokenizer, device: 
 
     # Selecting a batch-size
     # ---------------------
-    # A g5.2x.large instance has an NVIDIA A10G GPU with 24 GB of VRAM.
+    # A g6.xlarge instance has an NVIDIA L4 GPU with 24 GB of VRAM.
     # In BF16, the 7-B parameter model occupies ≈13 GB leaving ample room
     # for the KV-cache, activations and a few prompt / generated tokens.
     # Empirically a batch-size of *two* comfortably fits in memory while
@@ -34,7 +34,7 @@ def evaluate(model: torch.nn.Module, dataloader: DataLoader, tokenizer, device: 
     dataloader_batch_size = dataloader.batch_size
     if dataloader_batch_size and dataloader_batch_size > BATCH_LIMIT:
         print(
-            f"⚠️  Requested batch-size {dataloader_batch_size} exceeds the safe limit of {BATCH_LIMIT} on a g5.2x.large; results may OOM."
+            f"⚠️  Requested batch-size {dataloader_batch_size} exceeds the safe limit of {BATCH_LIMIT} on a g6.xlarge; results may OOM."
         )
 
     eos_id = tokenizer.eos_token_id

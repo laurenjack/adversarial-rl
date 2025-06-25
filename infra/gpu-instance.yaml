@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Single g5.2xlarge Ubuntu 22.04 DLAMI with 100 GiB root volume
+  Single g6.xlarge Ubuntu 22.04 DLAMI with 100 GiB root volume
 
 Parameters:
   KeyName:
@@ -34,7 +34,7 @@ Resources:
   GPUInstance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: g5.2xlarge
+      InstanceType: g6.xlarge
       ImageId: !Ref AmiId
       KeyName: !Ref KeyName
       SecurityGroupIds:
@@ -57,7 +57,7 @@ Resources:
           fi
       Tags:
         - Key: Name
-          Value: DLAMI-g5-2xlarge
+          Value: DLAMI-g6-xlarge
 
 Outputs:
   InstanceId:

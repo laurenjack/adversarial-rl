@@ -1,5 +1,5 @@
 # ---------- configuration -------------------------------------------------
-STACK_NAME     ?= llm-g5-stack
+STACK_NAME     ?= llm-g6-stack
 REGION         ?= eu-central-1
 TEMPLATE_FILE  ?= infra/gpu-instance.yaml
 KEY_NAME       ?= k8
@@ -12,25 +12,40 @@ PARAM_OVERRIDES = \
   VpcId=$(VPC_ID) \
   AllowedSSH=$(SSH_CIDR)
 
-.PHONY: start stop status terminate logs
+.PHONY: create start stop status terminate logs
 
-start:
-	@echo "▶ deploying $(STACK_NAME) in $(REGION)…"
+create:
+	@set -e; \
+	echo "▶ deploying $(STACK_NAME) in $(REGION)…"; \
 	aws cloudformation deploy \
 	  --stack-name $(STACK_NAME) \
 	  --template-file $(TEMPLATE_FILE) \
 	  --region $(REGION) \
 	  --capabilities CAPABILITY_IAM \
-	  --parameter-overrides $(PARAM_OVERRIDES)
-	@echo "⏳ waiting for stack to finish…"
+	  --parameter-overrides $(PARAM_OVERRIDES); \
+	echo "⏳ waiting for stack to finish…"; \
 	aws cloudformation wait stack-create-complete \
 	  --stack-name $(STACK_NAME) \
-	  --region $(REGION)
-	@echo "✓ stack ready"
-	@$(MAKE) -s status
+	  --region $(REGION); \
+	echo "✓ stack ready"; \
+	$(MAKE) -s status
+
+start:
+	@set -e; \
+	echo "▶ starting EC2 instance in $(STACK_NAME)…"; \
+	INSTANCE_ID=$$(aws cloudformation describe-stacks \
+	  --stack-name $(STACK_NAME) --region $(REGION) \
+	  --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" \
+	  --output text); \
+	aws ec2 start-instances --instance-ids $$INSTANCE_ID --region $(REGION); \
+	echo "⏳ waiting for running state…"; \
+	aws ec2 wait instance-running --instance-ids $$INSTANCE_ID --region $(REGION); \
+	echo "✓ instance $$INSTANCE_ID running"; \
+	$(MAKE) -s status
 
 stop:
-	@echo "▶ stopping EC2 instance in $(STACK_NAME)…"
+	@set -e; \
+	echo "▶ stopping EC2 instance in $(STACK_NAME)…"; \
 	INSTANCE_ID=$$(aws cloudformation describe-stacks \
 	  --stack-name $(STACK_NAME) --region $(REGION) \
 	  --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" \
@@ -47,10 +62,11 @@ status:
 	  --output table
 
 terminate:
-	@echo "⚠ Deleting the whole stack (instance + EBS root WILL be lost)…"
-	aws cloudformation delete-stack --stack-name $(STACK_NAME) --region $(REGION)
-	aws cloudformation wait stack-delete-complete --stack-name $(STACK_NAME) --region $(REGION)
-	@echo "✓ stack removed"
+	@set -e; \
+	echo "⚠ Deleting the whole stack (instance + EBS root WILL be lost)…"; \
+	aws cloudformation delete-stack --stack-name $(STACK_NAME) --region $(REGION); \
+	aws cloudformation wait stack-delete-complete --stack-name $(STACK_NAME) --region $(REGION); \
+	echo "✓ stack removed"
 
 logs:
 	@aws cloudformation describe-stack-events --stack-name $(STACK_NAME) --region $(REGION) --output table
