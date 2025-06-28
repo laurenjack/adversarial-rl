@@ -18,25 +18,6 @@ def evaluate(model: torch.nn.Module, dataloader: DataLoader, tokenizer, device: 
     TEMPERATURE = 0.2
     MAX_NEW_TOKENS = 512  # more than enough for most APPS solutions
 
-    # Selecting a batch-size
-    # ---------------------
-    # A g6.xlarge instance has an NVIDIA L4 GPU with 24 GB of VRAM.
-    # In BF16, the 7-B parameter model occupies ≈13 GB leaving ample room
-    # for the KV-cache, activations and a few prompt / generated tokens.
-    # Empirically a batch-size of *two* comfortably fits in memory while
-    # still providing a throughput benefit over purely sequential eval.
-    # The DataLoader constructed in ``rl.main`` already respects a user
-    # supplied ``batch_size`` – we merely sanity-check that it does not
-    # exceed *2* and warn otherwise.
-
-    BATCH_LIMIT = 2
-
-    dataloader_batch_size = dataloader.batch_size
-    if dataloader_batch_size and dataloader_batch_size > BATCH_LIMIT:
-        print(
-            f"⚠️  Requested batch-size {dataloader_batch_size} exceeds the safe limit of {BATCH_LIMIT} on a g6.xlarge; results may OOM."
-        )
-
     eos_id = tokenizer.eos_token_id
     if eos_id is None:
         raise ValueError("Tokenizer is missing an eos_token_id – cannot perform autoregressive generation.")
