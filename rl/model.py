@@ -3,12 +3,13 @@ from torch import nn
 
 
 MODEL_ID = "meta-llama/CodeLlama-7b-Instruct-hf"
-VOCAB_SIZE = 32000
+VOCAB_SIZE = 32016
 NUM_LAYERS = 32
 MAX_CONTEXT_LENGTH = 4096
 H = 4096
-ATTENTION_HEADS = 32
-HEAD_SIZE = H // ATTENTION_HEADS
+QUERY_HEADS = 32
+HEAD_SIZE = H // QUERY_HEADS
+KV_HEADS = 8  # For Multi-Query Attention
 MLP_HIDDEN = 11008
 EPSILON = 1e-6
 
@@ -27,8 +28,8 @@ class RmsNorm(nn.Module):
 class KvCache:
 
     def __init__(self, b):
-        self.k = torch.zeros(b, ATTENTION_HEADS, MAX_CONTEXT_LENGTH, HEAD_SIZE, dtype=torch.bfloat16)
-        self.v = torch.zeros(b, ATTENTION_HEADS, MAX_CONTEXT_LENGTH, HEAD_SIZE, dtype=torch.bfloat16)
+        self.k = torch.zeros(b, KV_HEADS, MAX_CONTEXT_LENGTH, HEAD_SIZE, dtype=torch.bfloat16)
+        self.v = torch.zeros(b, KV_HEADS, MAX_CONTEXT_LENGTH, HEAD_SIZE, dtype=torch.bfloat16)
 
 
 class SelfAttention(nn.Module):
@@ -39,8 +40,8 @@ class SelfAttention(nn.Module):
         self.sin = sin
         self.cos = cos
         self.q_proj = nn.Linear(H, H, bias=False, dtype=torch.bfloat16)
-        self.k_proj = nn.Linear(H, H, bias=False, dtype=torch.bfloat16)
-        self.v_proj = nn.Linear(H, H, bias=False, dtype=torch.bfloat16)
+        self.k_proj = nn.Linear(H, KV_HEADS * HEAD_SIZE, bias=False, dtype=torch.bfloat16)
+        self.v_proj = nn.Linear(H, KV_HEADS * HEAD_SIZE, bias=False, dtype=torch.bfloat16)
         self.out_proj = nn.Linear(H, H, bias=False, dtype=torch.bfloat16)
         # Hacky was to do caching of KV but keeps things simple, this is set explicitly in the outer rollout loop
         self.cache = None
@@ -59,13 +60,25 @@ class SelfAttention(nn.Module):
         out_odd = sin * even + cos * odd
         return torch.stack((out_even, out_odd), dim=-1).flatten(-2)
 
+    def _expand(self, x):
+        # Expand a KV head such that it matches the query
+        group = QUERY_HEADS // KV_HEADS
+        b, _, s, _ = x.shape
+        return (
+            x.unsqueeze(2)
+             .expand(-1, -1, group, -1, -1)
+             .reshape(b, QUERY_HEADS, s, HEAD_SIZE)
+        )
+
     def forward(self, x, attention_mask=None, start=0):
         b, s, _ = x.shape
         # Compute matrix multiplications for attention and reshape so that each head has its own index in the 2nd dim
-        Q, K, V = [w(x).view(b, s, ATTENTION_HEADS, HEAD_SIZE) for w in [self.q_proj, self.k_proj, self.v_proj]]
-        # Now move the ATTENTION_HEADS dim so that it is treated as a batch dimension in the matrix multiplications
+        Q = self.q_proj(x).view(b, s, QUERY_HEADS, HEAD_SIZE)
+        K = self.k_proj(x).view(b, s, KV_HEADS, HEAD_SIZE)
+        V = self.v_proj(x).view(b, s, KV_HEADS, HEAD_SIZE)
+        # Now move the heads dim so that it is treated as a batch dimension in the matrix multiplications
         Q, K, V = [T.transpose(1, 2) for T in [Q, K, V]]
-        # K, Q and V now have shape [b, ATTENTION_HEADS, s, HEAD_SIZE]
+        # K, Q and V now have shape [b, heads, s, HEAD_SIZE]
 
         # Apply ROPE position rotation
         Q = self._rotate(Q, start)
@@ -79,7 +92,9 @@ class SelfAttention(nn.Module):
             K = self.cache.k[:, :, :start+s, :]
             V = self.cache.v[:, :, :start+s, :]
 
-        z = Q @ K.transpose(2, 3) / HEAD_SIZE ** 0.5  # [b, ATTENTION_HEADS, s, start + s]
+        K = self._expand(K)
+        V = self._expand(V)
+        z = Q @ K.transpose(2, 3) / HEAD_SIZE ** 0.5  # [b, QUERY_HEADS, s, start + s]
         mask = self.full_mask[:s, :start + s] .unsqueeze(0).unsqueeze(0)  # [1, 1, s, start + s]
         if attention_mask is not None:
             attn = attention_mask[:, :start + s].to(torch.bool)
@@ -87,7 +102,7 @@ class SelfAttention(nn.Module):
             mask = mask & attn  # (b, 1, s, start + s)
         z = z.masked_fill(~mask, -1e6)
         A = torch.softmax(z, dim=-1)
-        context = A @ V   # [b, ATTENTION_HEADS, s, HEAD_SIZE]
+        context = A @ V   # [b, QUERY_HEADS, s, HEAD_SIZE]
         if attention_mask is not None:
             q_mask = attention_mask[:, :s].unsqueeze(1).unsqueeze(-1)  # (b,1,s,1)
             context = context * q_mask
@@ -175,9 +190,3 @@ def _rope_vectors():
     sin = torch.sin(angles)
     cos = torch.cos(angles)
     return sin, cos
-
-
-
-
-
-
