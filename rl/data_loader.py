@@ -11,10 +11,10 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from torch.utils.data import DataLoader
 
 # Model hyper-parameters
-from rl.model import LlamaCode2
+from rl.model.llama2_code import LLAMA2_CONFIG
 
-ID = LlamaCode2.ID
-MAX_LENGTH = LlamaCode2.MAX_LENGTH
+ID = LLAMA2_CONFIG.id
+MAX_LENGTH = LLAMA2_CONFIG.max_length
 
 # ----------------------------------------------------------------------------
 # Public helpers

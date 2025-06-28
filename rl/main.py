@@ -3,7 +3,7 @@ import argparse
 
 # New: import the updated helpers
 
-from rl.model_loader import load_llamacode2
+from rl.model_loader import load_llama2code
 from rl.data_loader import (
     get_apps_dataloader,
 )
@@ -18,7 +18,7 @@ def _verify(device: str = "cuda", skip_download: bool = False) -> None:
     valid and all tensors can be materialised on *device*.
     """
 
-    _ = load_llamacode2(device=device, skip_download=skip_download)
+    _ = load_llama2code(device=device, skip_download=skip_download)
 
 
 def _evaluate(device: str = "cuda", skip_download: bool = False, batch_size: int = 1, split: str = "test") -> None:
@@ -29,7 +29,7 @@ def _evaluate(device: str = "cuda", skip_download: bool = False, batch_size: int
     """
 
     # Build the model – this will also perform verification implicitly.
-    model = load_llamacode2(device=device, skip_download=skip_download)
+    model = load_llama2code(device=device, skip_download=skip_download)
 
     # Fetch ready-made DataLoader and tokenizer.
     dataloader, tokenizer = get_apps_dataloader(split=split, batch_size=batch_size)

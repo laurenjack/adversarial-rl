@@ -152,7 +152,7 @@ class LlamaBlock(nn.Module):
 
        
 
-class LlamaCode2(Model):
+class Llama2Code(Model):
     """Implementation of Meta's 7B *Code Llama* model in pure PyTorch."""
 
     def __init__(self):
@@ -166,7 +166,6 @@ class LlamaCode2(Model):
         self.blocks = nn.ModuleList([LlamaBlock(full_mask, self.mc, self.sin, self.cos) for _ in range(self.layers)])
         self.norm = RmsNorm(self.mc)
         self.lm_head = nn.Linear(self.h, self.vocab, bias=False)
-        self.lm_head.weight = self.embed_tokens.weight
 
     def set_kv_cache(self, b: int):
         for block in self.blocks:

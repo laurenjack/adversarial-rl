@@ -9,11 +9,11 @@ from typing import Dict
 import torch
 from safetensors.torch import load_file
 from huggingface_hub import snapshot_download           # HF ≥ 0.18.0
-from rl.model import LlamaCode2
+from rl.model.llama2_code import Llama2Code, LLAMA2_CONFIG
 
-H = LlamaCode2.H
-NUM_LAYERS = LlamaCode2.LAYERS
-ID = LlamaCode2.ID
+H = LLAMA2_CONFIG.h
+NUM_LAYERS = LLAMA2_CONFIG.layers
+ID = LLAMA2_CONFIG.id
 
 
 LOCAL_DIR: Path = Path("CodeLlama-7b")         
@@ -81,7 +81,7 @@ def sanity_check(state: Dict[str, torch.Tensor]) -> None:
 
 def _remap_key(hf_key: str) -> str | None:
     """Translate a single HF checkpoint key to the equivalent key in
-    our `LlamaCode2` implementation. Keys that do not have a counterpart
+    our `Llama2Code` implementation. Keys that do not have a counterpart
     (e.g. rotary embeddings, multiple adapter heads, etc.) return None
     and will be skipped.
 
@@ -152,10 +152,10 @@ def _convert_and_remap_state_dict(hf_state: Dict[str, torch.Tensor], *, dtype=to
     return new_state
 
 
-def load_llamacode2(device: str = "cuda", skip_download: bool = False) -> LlamaCode2:
+def load_llama2code(device: str = "cuda", skip_download: bool = False) -> Llama2Code:
     """High-level convenience: download shards (if necessary), load them to
     ``device``, remap & cast to bf16 and finally return a fully initialised
-    ``LlamaCode2`` instance ready for inference.
+    ``Llama2Code`` instance ready for inference.
     """
 
     model_dir = LOCAL_DIR if skip_download else download_if_missing()
@@ -175,7 +175,7 @@ def load_llamacode2(device: str = "cuda", skip_download: bool = False) -> LlamaC
     del hf_state
 
     # Step 2: instantiate the model on CPU, load weights, then move to the target device.
-    model = LlamaCode2().to(dtype=target_dtype)
+    model = Llama2Code().to(dtype=target_dtype)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
 
     # Free the remapped state dict ASAP to release RAM

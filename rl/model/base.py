@@ -9,6 +9,7 @@ class Model(nn.Module):
     """
     def __init__(self, mc: ModelConfig):
         super().__init__()
+        self.mc = mc
         self.id = mc.id
         self.vocab = mc.vocab
         self.layers = mc.layers
