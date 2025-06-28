@@ -10,14 +10,17 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from torch.utils.data import DataLoader
 
-# Shared constants from the model implementation
-from rl.model import MODEL_ID, MAX_CONTEXT_LENGTH
+# Model hyper-parameters
+from rl.model import LlamaCode2
+
+ID = LlamaCode2.ID
+MAX_LENGTH = LlamaCode2.MAX_LENGTH
 
 # ----------------------------------------------------------------------------
 # Public helpers
 # ----------------------------------------------------------------------------
 
-def load_tokenizer(model_id: str = MODEL_ID) -> PreTrainedTokenizerBase:
+def load_tokenizer(model_id: str = ID) -> PreTrainedTokenizerBase:
     """Load the Hugging-Face tokenizer used for Code Llama.«"""
 
     return AutoTokenizer.from_pretrained(model_id, use_fast=False)
@@ -57,7 +60,7 @@ def get_apps_dataset(
     def _within_ctx_len(example):
         # tokenise *once* without truncation so we can measure the true length
         ids = tokenizer(example["question"], add_special_tokens=False)["input_ids"]
-        return len(ids) <= MAX_CONTEXT_LENGTH
+        return len(ids) <= MAX_LENGTH
 
     raw_ds = raw_ds.filter(_within_ctx_len)
 
@@ -67,7 +70,7 @@ def get_apps_dataset(
             example["question"].strip(),
             return_tensors="pt",
             truncation=True,
-            max_length=MAX_CONTEXT_LENGTH,
+            max_length=MAX_LENGTH,
         )
 
         # ---------- input / output pairs ------------------------------------

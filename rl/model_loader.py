@@ -9,9 +9,13 @@ from typing import Dict
 import torch
 from safetensors.torch import load_file
 from huggingface_hub import snapshot_download           # HF ≥ 0.18.0
-from rl.model import LlamaCode2, H, NUM_LAYERS, MODEL_ID
+from rl.model import LlamaCode2
 
-# ---------------------------------------------------------------------
+H = LlamaCode2.H
+NUM_LAYERS = LlamaCode2.LAYERS
+ID = LlamaCode2.ID
+
+
 LOCAL_DIR: Path = Path("CodeLlama-7b")         
 # only pull the weight shards + their index and the config
 ALLOW_PATTERNS = [
@@ -27,9 +31,9 @@ def download_if_missing() -> Path:
         print(f"✓ weights found in {LOCAL_DIR}")
         return LOCAL_DIR
 
-    print(f"Downloading {MODEL_ID} into {LOCAL_DIR} …")
+    print(f"Downloading {ID} into {LOCAL_DIR} …")
     snapshot_download(
-        repo_id=MODEL_ID,
+        repo_id=ID,
         local_dir=str(LOCAL_DIR),
         allow_patterns=ALLOW_PATTERNS,
         resume_download=True,                      # idempotent
